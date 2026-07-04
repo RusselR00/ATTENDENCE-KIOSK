@@ -1,5 +1,9 @@
 /**
- * Attendance Kiosk — Google Apps Script backend
+ * Attendance Kiosk — Google Apps Script backend (JSON API)
+ *
+ * The phone screen (index.html) is hosted on GitHub Pages and calls this
+ * script over fetch(). Apps Script only stores data — it does not serve the UI
+ * (Google blocks the camera inside Apps Script iframes).
  *
  * Container-bound to a Google Sheet. Deploy as a Web App
  * ("Execute as: Me", "Who has access: Anyone with the link").
@@ -15,11 +19,27 @@ const EMPLOYEES_SHEET  = 'Employees';
 const PUNCHES_SHEET     = 'Punches';
 const SELFIE_FOLDER_NAME = 'Attendance Selfies';
 
-/** Serve the phone/kiosk page. */
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('index')
-    .setTitle('Attendance')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1');
+/** GET — read-only actions (default: employee list). */
+function doGet(e) {
+  const action = (e && e.parameter && e.parameter.action) || 'employees';
+  if (action === 'employees') return json(getEmployees());
+  return json({ ok: false, message: 'Unknown action: ' + action });
+}
+
+/** POST — actions that change state or need a body. Uses text/plain to avoid CORS preflight. */
+function doPost(e) {
+  let body = {};
+  try { body = JSON.parse(e.postData.contents); } catch (err) {
+    return json({ ok: false, message: 'Bad request.' });
+  }
+  if (body.action === 'validatePin') return json(validatePin(body.employeeId, body.pin));
+  if (body.action === 'punch')       return json(submitPunch(body));
+  return json({ ok: false, message: 'Unknown action.' });
+}
+
+function json(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 /** One-time setup: create the tabs and headers if they don't exist. */

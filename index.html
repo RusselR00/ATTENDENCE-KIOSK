@@ -111,8 +111,24 @@
 </div>
 
 <script>
+  // ==== Your Apps Script Web App URL (the /exec link). Update if you redeploy. ====
+  var API_URL = 'https://script.google.com/macros/s/AKfycbyarV5aaMEumwocELZT6V59Wab0xy7kbaGdj4xRvngt0IdSbNLQDe03bxQ0MDMLz8Uj/exec';
+
   var state = { id: null, name: null, pin: '', type: null };
   var stream = null;
+
+  // GET a read-only action. Returns a promise of parsed JSON.
+  function apiGet(action) {
+    return fetch(API_URL + '?action=' + encodeURIComponent(action)).then(function (r) { return r.json(); });
+  }
+  // POST an action. text/plain avoids a CORS preflight Apps Script can't answer.
+  function apiPost(payload) {
+    return fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    }).then(function (r) { return r.json(); });
+  }
 
   function go(name) {
     document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
@@ -122,12 +138,11 @@
 
   // ---- 1. NAMES ----
   function loadNames() {
-    google.script.run
-      .withSuccessHandler(renderNames)
-      .withFailureHandler(function () {
-        document.getElementById('nameGrid').textContent = 'Could not load. Refresh the page.';
-      })
-      .getEmployees();
+    apiGet('employees')
+      .then(renderNames)
+      .catch(function () {
+        document.getElementById('nameGrid').textContent = 'Could not load. Check your connection and refresh.';
+      });
   }
   function renderNames(list) {
     var g = document.getElementById('nameGrid');
@@ -176,8 +191,8 @@
     }
   }
   function checkPin() {
-    google.script.run
-      .withSuccessHandler(function (r) {
+    apiPost({ action: 'validatePin', employeeId: state.id, pin: state.pin })
+      .then(function (r) {
         if (r.ok) {
           document.getElementById('typeFor').textContent = r.name + ', are you punching in or out?';
           document.getElementById('camFor').textContent = r.name;
@@ -187,11 +202,10 @@
           document.getElementById('pinErr').textContent = r.message || 'Wrong PIN.';
         }
       })
-      .withFailureHandler(function () {
+      .catch(function () {
         document.getElementById('pinErr').textContent = 'Network error. Try again.';
         state.pin = ''; drawDots();
-      })
-      .validatePin(state.id, state.pin);
+      });
   }
 
   // ---- 3. TYPE ----
@@ -262,9 +276,9 @@
   // ---- SUBMIT ----
   function submit(dataUrl) {
     document.getElementById('captureBtn').disabled = true;
-    showDone('<div class="big-emoji">⏳</div><div class="done-msg">Saving…</div>', true);
-    google.script.run
-      .withSuccessHandler(function (r) {
+    showDone('<div class="big-emoji">⏳</div><div class="done-msg">Saving…</div>');
+    apiPost({ action: 'punch', employeeId: state.id, pin: state.pin, type: state.type, selfieBase64: dataUrl })
+      .then(function (r) {
         if (r.ok) {
           var flag = r.status === 'ORPHAN OUT'
             ? '<div class="flag">No open session — flagged for review</div>' : '';
@@ -277,10 +291,9 @@
             escapeHtml(r.message || 'Could not save.') + '</div>');
         }
       })
-      .withFailureHandler(function () {
+      .catch(function () {
         showDone('<div class="big-emoji">⚠️</div><div class="done-msg err">Network error. Nothing was saved — try again.</div>');
-      })
-      .submitPunch({ employeeId: state.id, pin: state.pin, type: state.type, selfieBase64: dataUrl });
+      });
   }
   function showDone(html) {
     document.getElementById('doneCard').innerHTML = html;

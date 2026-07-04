@@ -13,18 +13,25 @@ Employees open one web app link on their phone, pick their name, enter a 4-digit
 - **Auto-flags missing punch-outs** so forgotten check-outs are easy to spot.
 - **No GPS, no shifts dropdown, no third-party service, no cost.**
 
+## Architecture
+
+Two free pieces:
+
+- **Apps Script + Google Sheet** — the data backend (a JSON API: employee list, PIN check, punch logging, selfies to Drive).
+- **GitHub Pages** — hosts `index.html`, the phone screen. The live camera only works on a real web page, so the UI can't live inside Apps Script (Google blocks the camera in Apps Script iframes). The page calls the Apps Script API over `fetch`.
+
 ## Files
 
 | File | What it is |
 |------|-----------|
-| `Code.gs` | Apps Script backend (paste into the Sheet's script editor) |
-| `index.html` | The phone/kiosk screen (paste as an HTML file named `index`) |
-| `SETUP.md` | Step-by-step setup & deploy guide (~10 min) |
+| `Code.gs` | Apps Script backend / JSON API (paste into the Sheet's script editor) |
+| `index.html` | The phone screen (hosted on GitHub Pages) |
+| `SETUP.md` | Step-by-step setup & deploy guide (~15 min) |
 | `docs/superpowers/specs/` | Design spec |
 
 ## Quick start
 
-See **[SETUP.md](SETUP.md)** — create a Sheet, paste the two files, run `setupSheets`, add employees, and Deploy as a Web App.
+See **[SETUP.md](SETUP.md)**: create a Sheet + paste `Code.gs`, run `setupSheets`, add employees, deploy as a Web App, put the `/exec` URL in `index.html`, and enable GitHub Pages.
 
 ## Location note
 

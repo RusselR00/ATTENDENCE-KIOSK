@@ -1,95 +1,111 @@
 # Setup & Deploy Guide — Attendance Kiosk
 
-This runs entirely inside **your own Google account**. No hosting, no cost.
-Total time: ~10 minutes. Do it once.
+Two free pieces, both under your own accounts:
+
+1. **Apps Script + Google Sheet** — stores the data (the backend).
+2. **GitHub Pages** — hosts the phone screen `index.html` (the camera only works on a real
+   web page, not inside Apps Script).
+
+Total time: ~15 minutes.
 
 ---
 
-## 1. Create the Google Sheet
+## PART A — The backend (Google Sheet + Apps Script)
 
-1. Go to [sheets.new](https://sheets.new) to create a blank spreadsheet.
-2. Rename it something like **"Attendance"** (top-left).
+### 1. Create the Google Sheet
+1. Go to [sheets.new](https://sheets.new) → rename it **"Attendance"**.
+2. Click **Extensions → Apps Script**.
 
-## 2. Open the script editor
+### 2. Paste the backend code
+1. Delete everything in the default `Code.gs`, then paste the full contents of **`Code.gs`** from this project.
+2. Click **Save** (💾).
+   *(You do NOT need to add an HTML file anymore — the screen lives on GitHub Pages.)*
 
-1. In the sheet, click **Extensions → Apps Script**.
-2. A code editor opens in a new tab.
+### 3. Create the tabs
+1. Click **`Code.gs`** in the left Files list so the **Run** toolbar appears.
+2. In the function dropdown pick **`setupSheets`** → click **▷ Run**.
+3. Authorize when asked (*Advanced → Go to project → Allow*). It's your own script.
+4. Back in the Sheet you'll see two tabs: **Employees** and **Punches**.
 
-## 3. Paste the code
-
-1. Delete whatever is in the default `Code.gs` file, then paste the full contents of **`Code.gs`** from this project.
-2. Click the **+** next to *Files* → **HTML** → name it exactly **`index`** (no `.html`).
-   Delete its default content and paste the full contents of **`index.html`** from this project.
-3. Click the **Save** icon (💾).
-
-## 4. Create the tabs
-
-1. In the script editor, choose the function **`setupSheets`** from the dropdown at the top.
-2. Click **Run**.
-3. Google will ask you to **authorize** — approve it (choose your account → *Advanced* → *Go to (project)* → *Allow*). This is normal; it's your own script.
-4. Go back to the sheet. You'll now see two tabs:
-   - **Employees** — with example columns `Employee ID | Name | PIN | Active`
-   - **Punches** — the log (fills automatically)
-
-## 5. Add your employees
-
-In the **Employees** tab, add one row per person:
+### 4. Add your employees
+In the **Employees** tab:
 
 | Employee ID | Name        | PIN  | Active |
 |-------------|-------------|------|--------|
 | E001        | Rahim Uddin | 4821 | Yes    |
 | E002        | Karim Ali   | 7390 | Yes    |
 
-- **PIN** = any 4 digits, private to that person.
-- **Active** = `Yes` to allow punching, `No` to hide/disable someone.
-- Delete the `Example Name` row when done.
+Delete the `Example Name` row. `Active = No` disables/hides someone.
 
-## 6. Deploy as a Web App
+### 5. Deploy as a Web App (the API)
+- **Deploy → New deployment** → gear ⚙️ → **Web app**
+- **Execute as:** *Me* · **Who has access:** *Anyone with the link*
+- **Deploy** → copy the **`/exec` URL**.
 
-1. In the script editor: **Deploy → New deployment**.
-2. Click the gear ⚙️ → choose **Web app**.
-3. Set:
-   - **Execute as:** *Me (your account)*
-   - **Who has access:** *Anyone with the link*
-4. Click **Deploy** → authorize if asked → **copy the Web app URL**.
-
-That URL is the app. Open it in any phone browser to test.
-
-## 7. Put it on the phones
-
-On each employee's phone (or the office phone):
-
-1. Open the copied **Web app URL** in Chrome/Safari.
-2. Allow **camera** access when asked.
-3. **Add to Home Screen** (browser menu) → it now behaves like an app with its own icon.
+> **Already deployed once?** Don't make a new deployment — that changes the URL.
+> Instead: **Deploy → Manage deployments → ✏️ edit → Version: New version → Deploy.**
+> This publishes the new API code on the **same** `/exec` URL.
 
 ---
 
-## How your brother reviews attendance
+## PART B — The phone screen (GitHub Pages)
 
-- Open the **Punches** tab in the Sheet — every row is one punch:
-  `Server Timestamp | Employee ID | Name | Type | Selfie Link | Status`
-- Click a **Selfie Link** to see the stamped photo (also in the Drive folder **"Attendance Selfies"**).
-- **Status** column:
-  - `OPEN` — punched in, hasn't punched out yet.
-  - `OK` — completed in/out pair.
-  - `MISSING PUNCH-OUT` — forgot to punch out last time (correct the time manually).
-  - `ORPHAN OUT` — a punch-out with no matching punch-in (review).
-- Filter/sort by Name or Date, or **File → Download → Excel** to export.
+### 6. Point the screen at your backend
+Open **`index.html`** and check the line near the top of the `<script>`:
+
+```js
+var API_URL = 'https://script.google.com/macros/s/…/exec';
+```
+
+It's already set to your current `/exec` URL. If your URL ever changes, paste the new one here,
+then commit and push.
+
+### 7. Turn on GitHub Pages
+1. On GitHub, open the repo → **Settings → Pages**.
+2. **Source:** *Deploy from a branch* → **Branch:** `main` → **Folder:** `/ (root)` → **Save**.
+3. Wait ~1 minute. GitHub shows your live URL, e.g.
+   **`https://russelr00.github.io/ATTENDENCE-KIOSK/`**
+
+That URL is the app. Open it on a phone.
+
+### 8. Put it on the phones
+1. Open the **GitHub Pages URL** in **Chrome (Android)** or **Safari (iPhone)**.
+   *(Not inside WhatsApp/Instagram browsers — they block the camera.)*
+2. Allow **camera** when prompted.
+3. **Add to Home Screen** → it behaves like an app.
+
+---
+
+## Testing (do this once)
+1. Open the Pages URL → tap your name → enter PIN → **Punch IN** → allow camera → take photo.
+2. Check the **Punches** tab: a new row appears with a selfie link and status `OPEN`.
+3. Open the selfie link — the photo has **name + IN + date/time** stamped on it.
+4. **Punch OUT** → the earlier row's status becomes `OK`.
+
+## Reviewing attendance
+Open the **Punches** tab:
+`Server Timestamp | Employee ID | Name | Type | Selfie Link | Status`
+
+- `OPEN` — punched in, not out yet.
+- `OK` — completed in/out pair.
+- `MISSING PUNCH-OUT` — forgot to punch out last time (correct the time by hand).
+- `ORPHAN OUT` — a punch-out with no matching punch-in.
+
+Selfies also live in the Drive folder **"Attendance Selfies"**.
+Export anytime with **File → Download → Excel**.
 
 ## What proves what
-
 | Check | Proves |
 |-------|--------|
 | PIN | Who it is |
-| Live camera (no gallery uploads) | It's really them, taken now |
-| Server timestamp in the Sheet | The real time (device clock can't fake it) |
-| Stamp burned on the photo + office background | When & where — reviewed by eye |
+| Live camera (GitHub Pages) | It's really them, taken now — no gallery uploads |
+| Server timestamp in the Sheet | The real time (phone clock can't fake it) |
+| Stamp on the photo + office background | When & where — reviewed by eye |
 
-> **Note:** location is verified by looking at the office background in the photo — it's a strong deterrent for a small team, not an airtight lock. If you ever need a bulletproof location guarantee, switch to a single fixed office phone (kiosk) instead of personal phones.
+> Location is verified by looking at the office background in the photo — a strong deterrent
+> for a small team, not airtight. For a bulletproof lock, use one fixed office phone (kiosk).
 
-## Updating the app later
-
-If you change `Code.gs` or `index.html`: paste the new code, Save, then
-**Deploy → Manage deployments → edit (pencil) → Version: New version → Deploy**.
-The same URL keeps working.
+## Note on the public endpoint
+Because the repo is public, your `/exec` URL is visible in `index.html`. That's acceptable:
+recording a punch still requires a valid **PIN**, and PINs are never exposed. Keep PINs private
+to each employee.
