@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a; color: #f1f5f9;
+    }
+    #app { max-width: 520px; margin: 0 auto; min-height: 100%; padding: 18px; }
+    h1 { font-size: 20px; margin: 4px 0 2px; }
+    .sub { color: #94a3b8; font-size: 13px; margin: 0 0 18px; }
+    .screen { display: none; }
+    .screen.active { display: block; }
+    .back { background: none; border: none; color: #94a3b8; font-size: 15px; padding: 6px 0; margin-bottom: 6px; }
+
+    /* name grid */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .name-btn {
+      background: #1e293b; border: 1px solid #334155; color: #f1f5f9;
+      border-radius: 14px; padding: 20px 10px; font-size: 16px; font-weight: 600;
+    }
+    .name-btn:active { background: #334155; }
+    .id { display: block; color: #64748b; font-size: 12px; font-weight: 400; margin-top: 4px; }
+
+    /* pin */
+    .dots { display: flex; gap: 14px; justify-content: center; margin: 18px 0 22px; }
+    .dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #475569; }
+    .dot.filled { background: #38bdf8; border-color: #38bdf8; }
+    .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .key {
+      background: #1e293b; border: 1px solid #334155; color: #f1f5f9;
+      border-radius: 14px; padding: 18px 0; font-size: 24px; font-weight: 600;
+    }
+    .key:active { background: #334155; }
+    .key.wide { grid-column: span 1; }
+
+    /* type */
+    .type-btn {
+      display: block; width: 100%; border: none; border-radius: 16px;
+      padding: 26px; font-size: 22px; font-weight: 700; margin-bottom: 14px; color: #fff;
+    }
+    .in  { background: #16a34a; }
+    .out { background: #dc2626; }
+
+    /* camera */
+    #video, #canvas { width: 100%; border-radius: 16px; background: #000; display: block; }
+    #canvas { display: none; }
+    .primary {
+      display: block; width: 100%; border: none; border-radius: 14px;
+      background: #38bdf8; color: #04263a; font-size: 18px; font-weight: 700;
+      padding: 18px; margin-top: 14px;
+    }
+    .primary:disabled { opacity: .5; }
+
+    /* done / error */
+    .card { text-align: center; padding: 30px 16px; }
+    .big-emoji { font-size: 64px; margin-bottom: 10px; }
+    .done-name { font-size: 22px; font-weight: 700; }
+    .done-msg { color: #cbd5e1; font-size: 16px; margin-top: 6px; }
+    .flag { color: #fca5a5; font-size: 14px; margin-top: 8px; }
+    .err { color: #fca5a5; }
+    .hint { color: #94a3b8; font-size: 13px; margin-top: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <h1>Attendance</h1>
+  <p class="sub" id="subtitle">Tap your name to punch in or out</p>
+
+  <!-- 1. NAME -->
+  <div id="screen-name" class="screen active">
+    <div class="grid" id="nameGrid">Loading…</div>
+  </div>
+
+  <!-- 2. PIN -->
+  <div id="screen-pin" class="screen">
+    <button class="back" onclick="go('name')">&larr; Back</button>
+    <div style="text-align:center;font-weight:600" id="pinFor"></div>
+    <div class="dots" id="dots"></div>
+    <div class="keypad" id="keypad"></div>
+    <p class="hint err" id="pinErr"></p>
+  </div>
+
+  <!-- 3. TYPE -->
+  <div id="screen-type" class="screen">
+    <button class="back" onclick="go('name')">&larr; Cancel</button>
+    <div style="text-align:center;font-weight:600;margin-bottom:16px" id="typeFor"></div>
+    <button class="type-btn in"  onclick="chooseType('IN')">🟢 &nbsp;Punch IN</button>
+    <button class="type-btn out" onclick="chooseType('OUT')">🔴 &nbsp;Punch OUT</button>
+  </div>
+
+  <!-- 4. CAMERA -->
+  <div id="screen-camera" class="screen">
+    <button class="back" onclick="go('type')">&larr; Back</button>
+    <div style="text-align:center;font-weight:600;margin-bottom:10px" id="camFor"></div>
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <button class="primary" id="captureBtn" onclick="capture()">📸 &nbsp;Take photo &amp; submit</button>
+    <p class="hint" id="camHint">Stand where the office is visible behind you.</p>
+  </div>
+
+  <!-- 5. DONE / ERROR -->
+  <div id="screen-done" class="screen">
+    <div class="card" id="doneCard"></div>
+    <button class="primary" onclick="reset()">Next person</button>
+  </div>
+</div>
+
+<script>
+  var state = { id: null, name: null, pin: '', type: null };
+  var stream = null;
+
+  function go(name) {
+    document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
+    document.getElementById('screen-' + name).classList.add('active');
+    if (name !== 'camera') stopCamera();
+  }
+
+  // ---- 1. NAMES ----
+  function loadNames() {
+    google.script.run
+      .withSuccessHandler(renderNames)
+      .withFailureHandler(function () {
+        document.getElementById('nameGrid').textContent = 'Could not load. Refresh the page.';
+      })
+      .getEmployees();
+  }
+  function renderNames(list) {
+    var g = document.getElementById('nameGrid');
+    if (!list || !list.length) { g.textContent = 'No employees found.'; return; }
+    g.innerHTML = '';
+    list.forEach(function (e) {
+      var b = document.createElement('button');
+      b.className = 'name-btn';
+      b.innerHTML = escapeHtml(e.name) + '<span class="id">' + escapeHtml(e.id) + '</span>';
+      b.onclick = function () { pickName(e); };
+      g.appendChild(b);
+    });
+  }
+  function pickName(e) {
+    state.id = e.id; state.name = e.name; state.pin = '';
+    document.getElementById('pinFor').textContent = 'Enter PIN for ' + e.name;
+    document.getElementById('pinErr').textContent = '';
+    drawDots(); go('pin');
+  }
+
+  // ---- 2. PIN ----
+  function buildKeypad() {
+    var pad = document.getElementById('keypad');
+    var keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+    keys.forEach(function (k) {
+      var b = document.createElement('button');
+      if (k === '') { b.style.visibility = 'hidden'; }
+      b.className = 'key';
+      b.textContent = k;
+      if (k !== '') b.onclick = function () { pressKey(k); };
+      pad.appendChild(b);
+    });
+  }
+  function pressKey(k) {
+    if (k === '⌫') { state.pin = state.pin.slice(0, -1); }
+    else if (state.pin.length < 4) { state.pin += k; }
+    drawDots();
+    if (state.pin.length === 4) checkPin();
+  }
+  function drawDots() {
+    var d = document.getElementById('dots'); d.innerHTML = '';
+    for (var i = 0; i < 4; i++) {
+      var s = document.createElement('div');
+      s.className = 'dot' + (i < state.pin.length ? ' filled' : '');
+      d.appendChild(s);
+    }
+  }
+  function checkPin() {
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (r.ok) {
+          document.getElementById('typeFor').textContent = r.name + ', are you punching in or out?';
+          document.getElementById('camFor').textContent = r.name;
+          go('type');
+        } else {
+          state.pin = ''; drawDots();
+          document.getElementById('pinErr').textContent = r.message || 'Wrong PIN.';
+        }
+      })
+      .withFailureHandler(function () {
+        document.getElementById('pinErr').textContent = 'Network error. Try again.';
+        state.pin = ''; drawDots();
+      })
+      .validatePin(state.id, state.pin);
+  }
+
+  // ---- 3. TYPE ----
+  function chooseType(t) { state.type = t; go('camera'); startCamera(); }
+
+  // ---- 4. CAMERA ----
+  function startCamera() {
+    document.getElementById('captureBtn').disabled = false;
+    document.getElementById('video').style.display = 'block';
+    document.getElementById('canvas').style.display = 'none';
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      .then(function (s) { stream = s; document.getElementById('video').srcObject = s; })
+      .catch(function () {
+        document.getElementById('camHint').innerHTML =
+          '<span class="err">Camera blocked. Allow camera access, then reopen this page.</span>';
+        document.getElementById('captureBtn').disabled = true;
+      });
+  }
+  function stopCamera() {
+    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+  }
+  function capture() {
+    var video = document.getElementById('video');
+    var canvas = document.getElementById('canvas');
+    if (!video.videoWidth) return;
+
+    // Downscale to max 720px wide to keep the file small.
+    var scale = Math.min(1, 720 / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    stampPhoto(ctx, canvas);
+
+    video.style.display = 'none';
+    canvas.style.display = 'block';
+    stopCamera();
+
+    var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    submit(dataUrl);
+  }
+  function stampPhoto(ctx, canvas) {
+    var now = new Date();
+    var line1 = state.name + '  —  Punch ' + state.type;
+    var line2 = formatStamp(now);
+    var pad = 10;
+    var barH = Math.max(46, canvas.width * 0.13);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, canvas.height - barH, canvas.width, barH);
+    ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'top';
+    ctx.font = 'bold ' + Math.round(barH * 0.30) + 'px sans-serif';
+    ctx.fillText(line1, pad, canvas.height - barH + pad);
+    ctx.font = Math.round(barH * 0.26) + 'px sans-serif';
+    ctx.fillText(line2, pad, canvas.height - barH + pad + barH * 0.36);
+  }
+  function formatStamp(d) {
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var h = d.getHours(), m = d.getMinutes();
+    var ap = h >= 12 ? 'PM' : 'AM';
+    var hh = h % 12; if (hh === 0) hh = 12;
+    var mm = (m < 10 ? '0' : '') + m;
+    var dd = (d.getDate() < 10 ? '0' : '') + d.getDate();
+    return dd + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ', ' + hh + ':' + mm + ' ' + ap;
+  }
+
+  // ---- SUBMIT ----
+  function submit(dataUrl) {
+    document.getElementById('captureBtn').disabled = true;
+    showDone('<div class="big-emoji">⏳</div><div class="done-msg">Saving…</div>', true);
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (r.ok) {
+          var flag = r.status === 'ORPHAN OUT'
+            ? '<div class="flag">No open session — flagged for review</div>' : '';
+          showDone(
+            '<div class="big-emoji">' + (r.type === 'IN' ? '🟢' : '🔴') + '</div>' +
+            '<div class="done-name">' + escapeHtml(r.name) + '</div>' +
+            '<div class="done-msg">' + escapeHtml(r.message) + '</div>' + flag);
+        } else {
+          showDone('<div class="big-emoji">⚠️</div><div class="done-msg err">' +
+            escapeHtml(r.message || 'Could not save.') + '</div>');
+        }
+      })
+      .withFailureHandler(function () {
+        showDone('<div class="big-emoji">⚠️</div><div class="done-msg err">Network error. Nothing was saved — try again.</div>');
+      })
+      .submitPunch({ employeeId: state.id, pin: state.pin, type: state.type, selfieBase64: dataUrl });
+  }
+  function showDone(html) {
+    document.getElementById('doneCard').innerHTML = html;
+    go('done');
+  }
+
+  // ---- RESET ----
+  function reset() {
+    state = { id: null, name: null, pin: '', type: null };
+    stopCamera();
+    go('name');
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  buildKeypad();
+  loadNames();
+</script>
+</body>
+</html>
